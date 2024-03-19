@@ -23,13 +23,20 @@
 #include<algorithm>
 #include<fstream>
 #include<chrono>
-
+ #include <unistd.h>
 #include<opencv2/core/core.hpp>
 
 #include<System.h>
 
 using namespace std;
-
+/**
+ * @brief 从关联文件中提取这些需要加载的图像的路径和时间戳
+ * 
+ * @param[in] strAssociationFilename    关联文件的访问路径
+ * @param[out] vstrImageFilenamesRGB     彩色图像路径序列
+ * @param[out] vstrImageFilenamesD       深度图像路径序列
+ * @param[out] vTimestamps               时间戳
+ */
 void LoadImages(const string &strAssociationFilename, vector<string> &vstrImageFilenamesRGB,
                 vector<string> &vstrImageFilenamesD, vector<double> &vTimestamps);
 
@@ -42,6 +49,7 @@ int main(int argc, char **argv)
     }
 
     // Retrieve paths to images
+    //1.读取图片信息和左右目关联信息
     vector<string> vstrImageFilenamesRGB;
     vector<string> vstrImageFilenamesD;
     vector<double> vTimestamps;
@@ -49,6 +57,7 @@ int main(int argc, char **argv)
     LoadImages(strAssociationFilename, vstrImageFilenamesRGB, vstrImageFilenamesD, vTimestamps);
 
     // Check consistency in the number of images and depthmaps
+    //2.检查图片信息及深度信息的一致性
     int nImages = vstrImageFilenamesRGB.size();
     if(vstrImageFilenamesRGB.empty())
     {
@@ -62,6 +71,7 @@ int main(int argc, char **argv)
     }
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
+    //3.创建一个orb-slam2系统并且初始化
     ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::RGBD,true);
 
     // Vector for tracking time statistics
@@ -73,10 +83,11 @@ int main(int argc, char **argv)
     cout << "Images in the sequence: " << nImages << endl << endl;
 
     // Main loop
+    //主循环 遍历所有图片
     cv::Mat imRGB, imD;
     for(int ni=0; ni<nImages; ni++)
     {
-        // Read image and depthmap from file
+        // Read image and depthmap from file读取图片的颜色信息和深度信息
         imRGB = cv::imread(string(argv[3])+"/"+vstrImageFilenamesRGB[ni],CV_LOAD_IMAGE_UNCHANGED);
         imD = cv::imread(string(argv[3])+"/"+vstrImageFilenamesD[ni],CV_LOAD_IMAGE_UNCHANGED);
         double tframe = vTimestamps[ni];
@@ -88,16 +99,17 @@ int main(int argc, char **argv)
             return 1;
         }
 
-#ifdef COMPILEDWITHC11
+#ifdef COMPILEDWITHC14
         std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 #else
         std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
 #endif
 
         // Pass the image to the SLAM system
+        //追踪像素点 获得相机位姿估计
         SLAM.TrackRGBD(imRGB,imD,tframe);
 
-#ifdef COMPILEDWITHC11
+#ifdef COMPILEDWITHC14
         std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
 #else
         std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
@@ -139,6 +151,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
+//从关联文件中提取这些需要加载的图像的路径和时间戳
 void LoadImages(const string &strAssociationFilename, vector<string> &vstrImageFilenamesRGB,
                 vector<string> &vstrImageFilenamesD, vector<double> &vTimestamps)
 {
