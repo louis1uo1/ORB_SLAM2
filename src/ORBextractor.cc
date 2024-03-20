@@ -119,21 +119,30 @@ static float IC_Angle(const Mat& image, Point2f pt,  const vector<int> & u_max)
 //用于度转弧度
 const float factorPI = (float)(CV_PI/180.f);
 
-static void computeOrbDescriptor(const KeyPoint& kpt,
-                                 const Mat& img, const Point* pattern,
-                                 uchar* desc)
+/**
+ * @brief 计算ORB特征点描述子
+ * @param kpt   特征点对象
+ * @param img   提取特征点的图像
+ * @param pattern 采样模板  
+ * @param desc  保存计算好的描述子，维度为32*8 = 256 bit
+ * @note  这个是全局的静态函数，只能是在本文件内被调用;
+ * 在计算描述子时,应该将特征点周围像素旋转到主方向上来计算;
+ * 为了编程方便,实践上对pattern进行旋转.
+ */
+static void computeOrbDescriptor(const KeyPoint& kpt,const Mat& img, const Point* pattern,uchar* desc)
 {
-    float angle = (float)kpt.angle*factorPI;
-    float a = (float)cos(angle), b = (float)sin(angle);
+    float angle = (float)kpt.angle*factorPI;//角度转为弧度
+    float a = (float)cos(angle), b = (float)sin(angle);//计算正弦值和余弦值
 
-    const uchar* center = &img.at<uchar>(cvRound(kpt.pt.y), cvRound(kpt.pt.x));
-    const int step = (int)img.step;
+    const uchar* center = &img.at<uchar>(cvRound(kpt.pt.y), cvRound(kpt.pt.x));//图像中心坐标指针
+    const int step = (int)img.step;//图像的每行的字节数
 
-    #define GET_VALUE(idx) \
-        center[cvRound(pattern[idx].x*b + pattern[idx].y*a)*step + \
-               cvRound(pattern[idx].x*a - pattern[idx].y*b)]
-
-
+    //原始的BRIEF描述子没有方向不变性，通过加入关键点的方向来计算描述子，称之为Steer BRIEF，具有较好旋转不变特性
+    //这里将取的采样模板pattern中点的x轴方向旋转到特征点的方向。
+    //获得采样点中某个idx所对应的点的灰度值
+    //变换关系:x'= xcos(θ) - ysin(θ),  y'= xsin(θ) + ycos(θ)
+    #define GET_VALUE(idx) center[cvRound(pattern[idx].x*b + pattern[idx].y*a)*step + cvRound(pattern[idx].x*a - pattern[idx].y*b)] 
+    //计算描述子
     for (int i = 0; i < 32; ++i, pattern += 16)
     {
         int t0, t1, val;
@@ -154,7 +163,7 @@ static void computeOrbDescriptor(const KeyPoint& kpt,
         t0 = GET_VALUE(14); t1 = GET_VALUE(15);
         val |= (t0 < t1) << 7;
 
-        desc[i] = (uchar)val;
+        desc[i] = (uchar)val;//保存此描述子
     }
 
     #undef GET_VALUE
@@ -950,6 +959,10 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
 						   umax);	
 }
 
+/**
+ * @brief 用老办法计算特征点
+ * @param allKeypoints 
+ */
 void ORBextractor::ComputeKeyPointsOld(std::vector<std::vector<KeyPoint> > &allKeypoints)
 {
     allKeypoints.resize(nlevels);
@@ -1129,31 +1142,52 @@ void ORBextractor::ComputeKeyPointsOld(std::vector<std::vector<KeyPoint> > &allK
         computeOrientation(mvImagePyramid[level], allKeypoints[level], umax);
 }
 
+/**
+ * @brief 计算某层金字塔图像上特征点的描述子
+ * 
+ * @param[in] image                 某层金字塔图像
+ * @param[in] keypoints             特征点vector容器
+ * @param[out] descriptors          描述子
+ * @param[in] pattern               计算描述子使用的固定随机点集
+ */
 static void computeDescriptors(const Mat& image, vector<KeyPoint>& keypoints, Mat& descriptors,
                                const vector<Point>& pattern)
 {
+    //清空保存描述子信息的容器
     descriptors = Mat::zeros((int)keypoints.size(), 32, CV_8UC1);
 
     for (size_t i = 0; i < keypoints.size(); i++)
         computeOrbDescriptor(keypoints[i], image, &pattern[0], descriptors.ptr((int)i));
 }
 
+
+/**
+ * @brief 这个函数重载了() 运算符,使得其他类可以将ORBextractor 类型变量当作函数来使用.
+ * @param _image    原始图的图像
+ * @param _mask     掩膜mask
+ * @param _keypoints    存储特征点关键点的向量
+ * @param _descriptors  存储特征点描述子的矩阵
+ * @note  相当于其它类调用此函数时做了一次完整的特征点提取
+ */
 void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPoint>& _keypoints,
                       OutputArray _descriptors)
 { 
+    //1.检查图像有效性
     if(_image.empty())
         return;
 
-    Mat image = _image.getMat();
-    assert(image.type() == CV_8UC1 );
+    Mat image = _image.getMat();//获取图像大小
+    assert(image.type() == CV_8UC1 );//判断图像的格式是否正确，要求是单通道灰度值
 
-    // Pre-compute the scale pyramid
+    //2.构建图像金字塔
     ComputePyramid(image);
 
     vector < vector<KeyPoint> > allKeypoints;
+    //3.提取图像特征点并筛选
     ComputeKeyPointsOctTree(allKeypoints);
     //ComputeKeyPointsOld(allKeypoints);
 
+    //4.计算图像的描述子，并储存至descriptors
     Mat descriptors;
 
     int nkeypoints = 0;
@@ -1167,29 +1201,33 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
         descriptors = _descriptors.getMat();
     }
 
-    _keypoints.clear();
-    _keypoints.reserve(nkeypoints);
+    _keypoints.clear();//清空用作返回特征点提取结果的vector容器
+    _keypoints.reserve(nkeypoints);//预分配正确大小的空间
 
     int offset = 0;
+    //开始遍历每一层图像
     for (int level = 0; level < nlevels; ++level)
     {
+        //获取在allKeypoints中当前层特征点容器的句柄
         vector<KeyPoint>& keypoints = allKeypoints[level];
-        int nkeypointsLevel = (int)keypoints.size();
+        int nkeypointsLevel = (int)keypoints.size();//本层的特征点数
 
         if(nkeypointsLevel==0)
             continue;
 
-        // preprocess the resized image
-        Mat workingMat = mvImagePyramid[level].clone();
+        
+        Mat workingMat = mvImagePyramid[level].clone();// 深拷贝当前金字塔所在层级的图像
+        //5.对图像进行高斯模糊
         GaussianBlur(workingMat, workingMat, Size(7, 7), 2, 2, BORDER_REFLECT_101);
 
-        // Compute the descriptors
+        //提取特征点的时候，使用的是清晰的原图像；这里计算描述子的时候，为了避免图像噪声的影响，使用了高斯模糊的图像
         Mat desc = descriptors.rowRange(offset, offset + nkeypointsLevel);
+        //6.计算高斯模糊后图像的描述子
         computeDescriptors(workingMat, keypoints, desc, pattern);
 
-        offset += nkeypointsLevel;
+        offset += nkeypointsLevel;// 更新偏移量的值 
 
-        // Scale keypoint coordinates
+        //7.对非第0层图像中的特征点的坐标恢复到第0层图像（原图像）的坐标系下
         if (level != 0)
         {
             float scale = mvScaleFactor[level]; //getScale(level, firstLevel, scaleFactor);
@@ -1197,16 +1235,17 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
                  keypointEnd = keypoints.end(); keypoint != keypointEnd; ++keypoint)
                 keypoint->pt *= scale;
         }
-        // And add the keypoints to the output
+        //将keypoints中内容插入到_keypoints的末尾
+        //输出_keypoints
         _keypoints.insert(_keypoints.end(), keypoints.begin(), keypoints.end());
     }
 }
+
 
 /**
  * @brief 构建图像金字塔
  * @param image 原图像
  */
-
 void ORBextractor::ComputePyramid(cv::Mat image)
 {
     //遍历每层金字塔
