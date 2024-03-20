@@ -48,6 +48,7 @@ public:
     
     enum {HARRIS_SCORE=0, FAST_SCORE=1 };
 
+    
     ORBextractor(int nfeatures, float scaleFactor, int nlevels,
                  int iniThFAST, int minThFAST);
 
@@ -82,7 +83,7 @@ public:
         return mvInvLevelSigma2;
     }
 
-    std::vector<cv::Mat> mvImagePyramid;
+    std::vector<cv::Mat> mvImagePyramid;//存储图像金字塔的容器，一个矩阵存储一层图像
 
 protected:
 
@@ -92,22 +93,23 @@ protected:
                                            const int &maxX, const int &minY, const int &maxY, const int &nFeatures, const int &level);
 
     void ComputeKeyPointsOld(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);
-    std::vector<cv::Point> pattern;
+    
+    std::vector<cv::Point> pattern;//用于计算描述子的随机采样点集合
 
-    int nfeatures;
-    double scaleFactor;
-    int nlevels;
-    int iniThFAST;
-    int minThFAST;
+    int nfeatures;//在图像金字塔所有层级提取到的特征点数之和，从yaml配置文件中读取
+    double scaleFactor;//图像金字塔相邻层级之间的缩放系数，从yaml配置文件中读取
+    int nlevels;//金字塔层级数 从yaml配置文件中读取
+    int iniThFAST;//初始的FAST角点检测阈值 从yaml配置文件中读取
+    int minThFAST;//最小的FAST角点检测阈值 从yaml配置文件中读取
 
-    std::vector<int> mnFeaturesPerLevel;
+    std::vector<int> mnFeaturesPerLevel;//每层金字塔中提取的特征点数（正比于图层边长，总和为nfeatures）
 
-    std::vector<int> umax;
+    std::vector<int> umax;//计算特征点方向的时候，有个圆形的图像区域，这个vector中存储了每行u轴的边界（四分之一，其他部分通过对称获得）
 
-    std::vector<float> mvScaleFactor;
-    std::vector<float> mvInvScaleFactor;    
-    std::vector<float> mvLevelSigma2;
-    std::vector<float> mvInvLevelSigma2;
+    std::vector<float> mvScaleFactor;//各层金字塔的缩放系数
+    std::vector<float> mvInvScaleFactor;// 各层金字塔的缩放系数的倒数
+    std::vector<float> mvLevelSigma2;//各层金字塔的缩放系数的平方
+    std::vector<float> mvInvLevelSigma2;//各层金字塔的缩放系数的平方的倒数
 };
 
 } //namespace ORB_SLAM

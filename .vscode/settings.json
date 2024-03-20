@@ -3,5 +3,6 @@
         "iomanip": "cpp",
         "chrono": "cpp",
         "ostream": "cpp"
-    }
+    },
+    "C_Cpp.default.compilerPath": ""
 }
