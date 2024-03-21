@@ -1284,7 +1284,7 @@ void ORBextractor::ComputePyramid(cv::Mat image)
             
             //copyMakeBorder函数实现了复制和padding填充,其参数BORDER_REFLECT_101指定对padding进行镜像填充.
             copyMakeBorder(mvImagePyramid[level], temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
-                           BORDER_REFLECT_101+BORDER_ISOLATED); ss
+                           BORDER_REFLECT_101+BORDER_ISOLATED);
         }
         
         else
