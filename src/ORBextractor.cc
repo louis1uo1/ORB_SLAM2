@@ -1273,10 +1273,7 @@ void ORBextractor::ComputePyramid(cv::Mat image)
 				   0, 						//水平方向上的缩放系数，留0表示自动计算
 				   0,  						//垂直方向上的缩放系数，留0表示自动计算
 				   cv::INTER_LINEAR);*/		//图像缩放的差值算法类型，这里的是线性插值算法
-            //copyMakeBorder函数实现了复制和padding填充,其参数BORDER_REFLECT_101指定对padding进行镜像填充.
-            copyMakeBorder(mvImagePyramid[level], temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
-                           BORDER_REFLECT_101+BORDER_ISOLATED);   
-
+            
              // //!  原代码mvImagePyramid 并未扩充，上面resize应该改为如下
             resize(image,	                //输入图像
                 mvImagePyramid[level], 	//输出图像
@@ -1284,6 +1281,10 @@ void ORBextractor::ComputePyramid(cv::Mat image)
                 0, 						//水平方向上的缩放系数，留0表示自动计算
                 0,  						//垂直方向上的缩放系数，留0表示自动计算
                 cv::INTER_LINEAR);		//图像缩放的差值算法类型，这里的是线性插值算法
+            
+            //copyMakeBorder函数实现了复制和padding填充,其参数BORDER_REFLECT_101指定对padding进行镜像填充.
+            copyMakeBorder(mvImagePyramid[level], temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
+                           BORDER_REFLECT_101+BORDER_ISOLATED); ss
         }
         
         else
