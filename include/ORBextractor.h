@@ -28,7 +28,7 @@
 
 namespace ORB_SLAM2
 {
-
+// 分配四叉树时用到的结点类型
 class ExtractorNode
 {
 public:
@@ -60,25 +60,48 @@ public:
     void operator()( cv::InputArray image, cv::InputArray mask,
       std::vector<cv::KeyPoint>& keypoints,
       cv::OutputArray descriptors);
-
+    /**
+     * @brief 获取图像金字塔的层数
+     * @return int 图像金字塔的层数
+     */
     int inline GetLevels(){
         return nlevels;}
 
+    /**
+     * @brief 获取当前提取器所在的图像的缩放因子，这个不带s的因子表示是相临近层之间的
+     * @return float 当前提取器所在的图像的缩放因子，相邻层之间
+     */
     float inline GetScaleFactor(){
         return scaleFactor;}
 
+    /**
+     * @brief 获取图像金字塔中每个图层相对于底层图像的缩放因子
+     * @return std::vector<float> 图像金字塔中每个图层相对于底层图像的缩放因子
+     */
     std::vector<float> inline GetScaleFactors(){
         return mvScaleFactor;
     }
 
+    /**
+     * @brief 获取上面的那个缩放因子s的倒数
+     * @return std::vector<float> 倒数
+     */
     std::vector<float> inline GetInverseScaleFactors(){
         return mvInvScaleFactor;
     }
 
+    /**
+     * @brief 获取sigma^2，就是每层图像相对于初始图像缩放因子的平方，参考cpp文件中类构造函数的操作
+     * @return std::vector<float> sigma^2
+     */
     std::vector<float> inline GetScaleSigmaSquares(){
         return mvLevelSigma2;
     }
 
+    /**
+     * @brief 获取上面sigma平方的倒数
+     * @return std::vector<float> 
+     */
     std::vector<float> inline GetInverseScaleSigmaSquares(){
         return mvInvLevelSigma2;
     }
