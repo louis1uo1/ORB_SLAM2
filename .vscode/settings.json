@@ -4,5 +4,6 @@
         "chrono": "cpp",
         "ostream": "cpp"
     },
-    "C_Cpp.default.compilerPath": ""
+    "C_Cpp.default.compilerPath": "",
+    "commentTranslate.hover.enabled": false
 }

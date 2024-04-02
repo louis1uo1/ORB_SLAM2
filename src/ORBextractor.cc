@@ -1162,12 +1162,12 @@ static void computeDescriptors(const Mat& image, vector<KeyPoint>& keypoints, Ma
 
 
 /**
- * @brief 这个函数重载了() 运算符,使得其他类可以将ORBextractor 类型变量当作函数来使用.
+ * @brief 这个函数重载了() 运算符,使得其他类可以将ORBextractor类型变量当作函数来使用.
  * @param _image    原始图的图像
  * @param _mask     掩膜mask
  * @param _keypoints    存储特征点关键点的向量
  * @param _descriptors  存储特征点描述子的矩阵
- * @note  相当于其它类调用此函数时做了一次完整的特征点提取
+ * @note  该类最重要的函数，相当于其它类调用此函数时做了一次完整的特征点提取
  */
 void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPoint>& _keypoints,
                       OutputArray _descriptors)

@@ -324,12 +324,22 @@ bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
     return true;
 }
 
+/**
+ * @brief 获取在以（x，y）为圆心，半径为r的圆内的候选匹配点
+ * @param x 特征点坐标x
+ * @param y 特征点坐标y
+ * @param r 搜索半径
+ * @param minLevel 金字塔最小层级
+ * @param maxLevel 金字塔最大层级
+ * @return vector<size_t> 返回搜索到的候选匹配点索引
+ */
 vector<size_t> Frame::GetFeaturesInArea(const float &x, const float  &y, const float  &r, const int minLevel, const int maxLevel) const
 {
-    vector<size_t> vIndices;
+    vector<size_t> vIndices;//存储搜索结果
     vIndices.reserve(N);
-
+    //1.计算计算圆的上下左右边界所在的网格列和行的id
     const int nMinCellX = max(0,(int)floor((x-mnMinX-r)*mfGridElementWidthInv));
+    //如果最终求得的圆的左边界所在的网格列超过了设定了上限，那么就说明计算出错，找不到符合要求的特征点
     if(nMinCellX>=FRAME_GRID_COLS)
         return vIndices;
 
@@ -345,8 +355,10 @@ vector<size_t> Frame::GetFeaturesInArea(const float &x, const float  &y, const f
     if(nMaxCellY<0)
         return vIndices;
 
+    //检查需要搜索的图像金字塔层数范围是否符合要求
     const bool bCheckLevels = (minLevel>0) || (maxLevel>=0);
 
+    //2.遍历圆形区域内的所有网格，寻找满足条件的候选特征点
     for(int ix = nMinCellX; ix<=nMaxCellX; ix++)
     {
         for(int iy = nMinCellY; iy<=nMaxCellY; iy++)
@@ -354,29 +366,29 @@ vector<size_t> Frame::GetFeaturesInArea(const float &x, const float  &y, const f
             const vector<size_t> vCell = mGrid[ix][iy];
             if(vCell.empty())
                 continue;
-
+            //遍历这个网格中所有的特征点
             for(size_t j=0, jend=vCell.size(); j<jend; j++)
             {
-                const cv::KeyPoint &kpUn = mvKeysUn[vCell[j]];
+                const cv::KeyPoint &kpUn = mvKeysUn[vCell[j]];//根据索引先读取特征点
                 if(bCheckLevels)
                 {
-                    if(kpUn.octave<minLevel)
+                    if(kpUn.octave<minLevel)//cv::KeyPoint::octave表示该特征点所在的金字塔层级
                         continue;
                     if(maxLevel>=0)
                         if(kpUn.octave>maxLevel)
                             continue;
                 }
-
+                
                 const float distx = kpUn.pt.x-x;
                 const float disty = kpUn.pt.y-y;
-
+                //通过检查该特征点到圆中心的距离，查看是否是在这个圆形区域之内
                 if(fabs(distx)<r && fabs(disty)<r)
                     vIndices.push_back(vCell[j]);
             }
         }
     }
 
-    return vIndices;
+    return vIndices;//储存候选特征点
 }
 
 bool Frame::PosInGrid(const cv::KeyPoint &kp, int &posX, int &posY)

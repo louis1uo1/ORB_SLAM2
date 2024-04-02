@@ -108,21 +108,21 @@ public:
     // Frame timestamp.
     double mTimeStamp;
 
-    // Calibration matrix and OpenCV distortion parameters.
-    cv::Mat mK;
-    static float fx;
-    static float fy;
-    static float cx;
-    static float cy;
-    static float invfx;
-    static float invfy;
-    cv::Mat mDistCoef;
+    //相机内参，Frame类与相机相关的参数大部分设为static类型,整个系统内的所有Frame对象共享同一份相机参数.
+    static cv::Mat mK;//内参矩阵
+    static float fx;//x方向焦距
+    static float fy;//y方向焦距
+    static float cx;//相机中心点的x坐标
+    static float cy;//相机中心点的y坐标
+    static float invfx;//x方向焦距的逆
+    static float invfy;//y方向焦距的逆
+    static cv::Mat mDistCoef;//opencv中的去畸变矩阵，储存了一些畸变系数
 
-    // Stereo baseline multiplied by fx.
-    float mbf;
+    //基线距离与焦距的乘积
+    static float mbf;
 
-    // Stereo baseline in meters.
-    float mb;
+    //双目相机的基线距离
+    static float mb;
 
     // Threshold close/far points. Close points are inserted from 1 view.
     // Far points are inserted as in the monocular case from 2 views.
@@ -143,8 +143,8 @@ public:
     std::vector<float> mvDepth;
 
     // Bag of Words Vector structures.
-    DBoW2::BowVector mBowVec;
-    DBoW2::FeatureVector mFeatVec;
+    DBoW2::BowVector mBowVec;//词袋向量
+    DBoW2::FeatureVector mFeatVec;//词袋的特征向量
 
     // ORB descriptor, each row associated to a keypoint.
     cv::Mat mDescriptors, mDescriptorsRight;
@@ -158,7 +158,7 @@ public:
     // Keypoints are assigned to cells in a grid to reduce matching complexity when projecting MapPoints.
     static float mfGridElementWidthInv;
     static float mfGridElementHeightInv;
-    std::vector<std::size_t> mGrid[FRAME_GRID_COLS][FRAME_GRID_ROWS];
+    std::vector<std::size_t> mGrid[FRAME_GRID_COLS][FRAME_GRID_ROWS];//记录了每个网格中特征点的索引
 
     // Camera pose.
     cv::Mat mTcw;

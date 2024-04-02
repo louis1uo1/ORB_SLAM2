@@ -167,8 +167,8 @@ public:
     const cv::Mat mDescriptors;
 
     //BoW
-    DBoW2::BowVector mBowVec;
-    DBoW2::FeatureVector mFeatVec;
+    DBoW2::BowVector mBowVec;//词典向量；数据结构:map<Wordid,WordValue>,<距离当前单词最近的节点id，单词权重>
+    DBoW2::FeatureVector mFeatVec;//特征向量；数据结构:map<Nodeid,vector<unsigned int>>,<距离当前单词深度为level的节点id，nodeid下所有特征点在图像中的索引>
 
     // Pose relative to parent (this is computed when bad flag is activated)
     cv::Mat mTcp;

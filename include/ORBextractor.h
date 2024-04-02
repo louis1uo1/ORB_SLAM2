@@ -60,6 +60,7 @@ public:
     void operator()( cv::InputArray image, cv::InputArray mask,
       std::vector<cv::KeyPoint>& keypoints,
       cv::OutputArray descriptors);
+      
     /**
      * @brief 获取图像金字塔的层数
      * @return int 图像金字塔的层数
