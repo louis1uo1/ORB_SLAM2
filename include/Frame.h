@@ -109,7 +109,7 @@ public:
     double mTimeStamp;
 
     //相机内参，Frame类与相机相关的参数大部分设为static类型,整个系统内的所有Frame对象共享同一份相机参数.
-    static cv::Mat mK;//内参矩阵
+    cv::Mat mK;//内参矩阵
     static float fx;//x方向焦距
     static float fy;//y方向焦距
     static float cx;//相机中心点的x坐标
@@ -119,10 +119,10 @@ public:
     static cv::Mat mDistCoef;//opencv中的去畸变矩阵，储存了一些畸变系数
 
     //基线距离与焦距的乘积
-    static float mbf;
+    float mbf;
 
     //双目相机的基线距离
-    static float mb;
+    float mb;
 
     // Threshold close/far points. Close points are inserted from 1 view.
     // Far points are inserted as in the monocular case from 2 views.
