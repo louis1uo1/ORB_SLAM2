@@ -116,7 +116,7 @@ public:
     static float cy;//相机中心点的y坐标
     static float invfx;//x方向焦距的逆
     static float invfy;//y方向焦距的逆
-    static cv::Mat mDistCoef;//opencv中的去畸变矩阵，储存了一些畸变系数
+   cv::Mat mDistCoef;//opencv中的去畸变矩阵，储存了一些畸变系数
 
     //基线距离与焦距的乘积
     float mbf;
