@@ -973,38 +973,46 @@ bool Tracking::TrackLocalMap()
         return true;
 }
 
-
+/**
+ * @brief 判断是否需要插入关键帧
+ * @return true-需要 false-不需要
+ */
 bool Tracking::NeedNewKeyFrame()
 {
+    //!以下为三个不插入的条件
+    //在仅定位模式下不插入关键帧
     if(mbOnlyTracking)
         return false;
 
-    // If Local Mapping is freezed by a Loop Closure do not insert keyframes
+    //如果局部建图线程正在被闭环线程使用，则不插入关键帧
     if(mpLocalMapper->isStopped() || mpLocalMapper->stopRequested())
         return false;
-
+    //获取当前地图中的关键帧的数量
     const int nKFs = mpMap->KeyFramesInMap();
 
-    // Do not insert keyframes if not enough frames have passed from last relocalisation
+    //如果距离上一次重定位的时间很短（1s），并且当前地图中的关键帧数量超过限制，不插入关键帧
+    //mnId是当前帧的id mnLastRelocFrameId是最近一次重定位帧的id mMaxFrames是地图点出现的最大帧数
     if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames && nKFs>mMaxFrames)
         return false;
 
-    // Tracked MapPoints in the reference keyframe
-    int nMinObs = 3;
+    int nMinObs = 3;//地图点的最小观测次数
     if(nKFs<=2)
         nMinObs=2;
-    int nRefMatches = mpReferenceKF->TrackedMapPoints(nMinObs);
+    int nRefMatches = mpReferenceKF->TrackedMapPoints(nMinObs);//参考关键帧中满足nMinObs条件的地图点数量
 
-    // Local Mapping accept keyframes?
+    //当前局部建图线程是否繁忙的标志位
     bool bLocalMappingIdle = mpLocalMapper->AcceptKeyFrames();
 
-    // Check how many "close" points are being tracked and how many could be potentially created.
-    int nNonTrackedClose = 0;
-    int nTrackedClose= 0;
+    int nNonTrackedClose = 0;//双目（rgbd）相机中没有跟踪到的 近点
+    int nTrackedClose= 0;//双目（rgbd）相机中跟踪到的 近点
+
+    //双目（rgbd）相机的情况下获取近点的数量
     if(mSensor!=System::MONOCULAR)
     {
+        //遍历当前帧的所有特征点
         for(int i =0; i<mCurrentFrame.N; i++)
         {
+            //深度有效
             if(mCurrentFrame.mvDepth[i]>0 && mCurrentFrame.mvDepth[i]<mThDepth)
             {
                 if(mCurrentFrame.mvpMapPoints[i] && !mCurrentFrame.mvbOutlier[i])
@@ -1015,43 +1023,57 @@ bool Tracking::NeedNewKeyFrame()
         }
     }
 
+    //根据近点数量判断是否需要插入关键帧的标志位
     bool bNeedToInsertClose = (nTrackedClose<100) && (nNonTrackedClose>70);
 
-    // Thresholds
-    float thRefRatio = 0.75f;
+    float thRefRatio = 0.75f;//当前帧和参考关键帧跟踪到的点的比例阈值
+    //如果当前地图中关键帧很少，降低插入的门槛
     if(nKFs<2)
         thRefRatio = 0.4f;
-
+    
+    //单目相机中的 当前帧和参考关键帧跟踪到的点的比例阈值
     if(mSensor==System::MONOCULAR)
         thRefRatio = 0.9f;
-
-    // Condition 1a: More than "MaxFrames" have passed from last keyframe insertion
+    
+    //!以下为插入关键帧的条件
+    //条件1a：距离上次插入关键帧的时间过长（1s）
     const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames;
-    // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle
+    //条件1b：满足条件1a，并且局部建图线程空闲
     const bool c1b = (mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames && bLocalMappingIdle);
-    //Condition 1c: tracking is weak
-    const bool c1c =  mSensor!=System::MONOCULAR && (mnMatchesInliers<nRefMatches*0.25 || bNeedToInsertClose) ;
-    // Condition 2: Few tracked points compared to reference keyframe. Lots of visual odometry compared to map matches.
+    //条件1c：在双目（rgbd）相机下，当前帧匹配到的点 小于 参考关键帧匹配到的点×0.25；或者跟踪到的近点较少，没有跟踪到的近点数量较多
+    const bool c1c =  mSensor!=System::MONOCULAR && (mnMatchesInliers<nRefMatches*0.25 || bNeedToInsertClose);
+
+    /*条件2
+    2a:当前帧跟踪到的地图点小于参考关键帧跟踪到的点×比例阈值
+    2b：满足近点条件
+    2c：当前帧匹配到的点>15
+    */
     const bool c2 = ((mnMatchesInliers<nRefMatches*thRefRatio|| bNeedToInsertClose) && mnMatchesInliers>15);
 
+    //!条件1a 1b 1c同时只需要满足1个
+    //!条件2a 2b只需要满足一个，并且2c同时满足
+    //!此时才满足插入关键帧的全部条件
     if((c1a||c1b||c1c)&&c2)
     {
-        // If the mapping accepts keyframes, insert keyframe.
-        // Otherwise send a signal to interrupt BA
+        //如果局部建图线程空闲，则插入关键帧
         if(bLocalMappingIdle)
         {
             return true;
         }
+        //局部建图线程繁忙时，根据情况插入
         else
-        {
-            mpLocalMapper->InterruptBA();
+        {   
+            mpLocalMapper->InterruptBA();//中断局部BA
+            //对于双目（rgbd）相机
             if(mSensor!=System::MONOCULAR)
             {
+                //局部建图线程中的关键帧<3,则插入关键帧；否则不插入
                 if(mpLocalMapper->KeyframesInQueue()<3)
                     return true;
                 else
                     return false;
             }
+            //对于单目相机
             else
                 return false;
         }
