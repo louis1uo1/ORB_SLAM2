@@ -175,12 +175,21 @@ set<KeyFrame*> KeyFrame::GetConnectedKeyFrames()
     return s;
 }
 
+/**
+ * @brief 获取与该关键帧有联系的关键帧
+ * @return 与该关键帧有联系的关键帧（以按权重从大到小排序）
+ */
 vector<KeyFrame*> KeyFrame::GetVectorCovisibleKeyFrames()
 {
     unique_lock<mutex> lock(mMutexConnections);
     return mvpOrderedConnectedKeyFrames;
 }
 
+/**
+ * @brief 获取当前帧的共视帧中权重最高的前N帧
+ * @param N 获取关键帧的数量
+ * @return 当前帧的共视帧中权重最高的前N帧
+ */
 vector<KeyFrame*> KeyFrame::GetBestCovisibilityKeyFrames(const int &N)
 {
     unique_lock<mutex> lock(mMutexConnections);
@@ -188,9 +197,13 @@ vector<KeyFrame*> KeyFrame::GetBestCovisibilityKeyFrames(const int &N)
         return mvpOrderedConnectedKeyFrames;
     else
         return vector<KeyFrame*>(mvpOrderedConnectedKeyFrames.begin(),mvpOrderedConnectedKeyFrames.begin()+N);
-
 }
 
+/**
+ * @brief 获取当前帧的共视帧中权重超过w的帧
+ * @param w 权重阈值
+ * @return 当前帧的共视帧中权重超过w的帧
+ */
 vector<KeyFrame*> KeyFrame::GetCovisiblesByWeight(const int &w)
 {
     unique_lock<mutex> lock(mMutexConnections);
@@ -198,10 +211,13 @@ vector<KeyFrame*> KeyFrame::GetCovisiblesByWeight(const int &w)
     if(mvpOrderedConnectedKeyFrames.empty())
         return vector<KeyFrame*>();
 
+    // 从mvOrderedWeights找出第一个大于w的那个迭代器
     vector<int>::iterator it = upper_bound(mvOrderedWeights.begin(),mvOrderedWeights.end(),w,KeyFrame::weightComp);
+    
+    //没有找到权重大于w的关键帧，返回空
     if(it==mvOrderedWeights.end())
         return vector<KeyFrame*>();
-    else
+    else//否则，返回权重大于w的帧
     {
         int n = it-mvOrderedWeights.begin();
         return vector<KeyFrame*>(mvpOrderedConnectedKeyFrames.begin(), mvpOrderedConnectedKeyFrames.begin()+n);
@@ -450,14 +466,23 @@ set<KeyFrame*> KeyFrame::GetLoopEdges()
     return mspLoopEdges;
 }
 
+/**
+ * @brief 设置某关键帧为不能被删除
+ * @note 不能删除的情况：1.参与回环检测的关键帧
+ */
 void KeyFrame::SetNotErase()
 {
     unique_lock<mutex> lock(mMutexConnections);
     mbNotErase = true;
 }
 
+/**
+ * @brief 删除某关键帧（参与回环检测的关键帧不能被删除）
+ */
 void KeyFrame::SetErase()
 {
+    //若当前关键帧和其他关键帧没有形成回环关系，则能删除
+    //闭环线程不再需要某关键帧时,会调用SetErase()剥夺该关键帧不被删除的特权
     {
         unique_lock<mutex> lock(mMutexConnections);
         if(mspLoopEdges.empty())
@@ -466,14 +491,19 @@ void KeyFrame::SetErase()
         }
     }
 
+    //mbToBeErased：删除之前记录的想要删但时机不合适没有删除的帧
     if(mbToBeErased)
     {
         SetBadFlag();
     }
 }
 
+/**
+ * @brief 实际删除某关键帧：删除该关键帧与其他关键帧、地图点的联系
+ */
 void KeyFrame::SetBadFlag()
 {   
+    //!不能删除的情况：1.第0帧不能被删；2.有不能被删除标志的关键帧（当会将mbToBeErased置为true）
     {
         unique_lock<mutex> lock(mMutexConnections);
         if(mnId==0)
@@ -485,85 +515,93 @@ void KeyFrame::SetBadFlag()
         }
     }
 
+    //遍历所有和当前关键帧有联系的关键帧，删除它们与当前关键帧的联系
     for(map<KeyFrame*,int>::iterator mit = mConnectedKeyFrameWeights.begin(), mend=mConnectedKeyFrameWeights.end(); mit!=mend; mit++)
         mit->first->EraseConnection(this);
 
+    //遍历当前关键帧的所有地图点，删除它们之间的联系
     for(size_t i=0; i<mvpMapPoints.size(); i++)
-        if(mvpMapPoints[i])
-            mvpMapPoints[i]->EraseObservation(this);
+    {
+        if(mvpMapPoints[i])mvpMapPoints[i]->EraseObservation(this);
+    }    
+
     {
         unique_lock<mutex> lock(mMutexConnections);
         unique_lock<mutex> lock1(mMutexFeatures);
 
+        //清空自己与其它关键帧之间的联系
         mConnectedKeyFrameWeights.clear();
         mvpOrderedConnectedKeyFrames.clear();
 
-        // Update Spanning Tree
-        set<KeyFrame*> sParentCandidates;
-        sParentCandidates.insert(mpParent);
+        //!!!更新生成树
+        set<KeyFrame*> sParentCandidates;//候选父关键帧
+        sParentCandidates.insert(mpParent);//将当前帧的父关键帧放入候选父关键帧
 
-        // Assign at each iteration one children with a parent (the pair with highest covisibility weight)
-        // Include that children as new parent candidate for the rest
+        //!每迭代一次就为其中一个子关键帧寻找新的父关键帧，找到父的子关键帧可以作为其他子关键帧的候选父关键帧
         while(!mspChildrens.empty())
         {
             bool bContinue = false;
-
             int max = -1;
             KeyFrame* pC;
             KeyFrame* pP;
 
+            //遍历每一个子关键帧，让它们更新它们指向的父关键帧
             for(set<KeyFrame*>::iterator sit=mspChildrens.begin(), send=mspChildrens.end(); sit!=send; sit++)
             {
                 KeyFrame* pKF = *sit;
                 if(pKF->isBad())
                     continue;
 
-                // Check if a parent candidate is connected to the keyframe
-                vector<KeyFrame*> vpConnected = pKF->GetVectorCovisibleKeyFrames();
+                vector<KeyFrame*> vpConnected = pKF->GetVectorCovisibleKeyFrames();//获取该子关键帧的所有共视关键帧
+                //遍历该子关键帧的所有共视关键帧
                 for(size_t i=0, iend=vpConnected.size(); i<iend; i++)
-                {
+                {   
+                    //遍历候选父关键帧
                     for(set<KeyFrame*>::iterator spcit=sParentCandidates.begin(), spcend=sParentCandidates.end(); spcit!=spcend; spcit++)
                     {
+                        //如果子关键帧和候选父关键帧中有共视，则选择候选父关键帧中共视最强的那个作为新的父关键帧
                         if(vpConnected[i]->mnId == (*spcit)->mnId)
                         {
                             int w = pKF->GetWeight(vpConnected[i]);
+                            //寻找并更新权重最大的那个共视关系
                             if(w>max)
                             {
                                 pC = pKF;
                                 pP = vpConnected[i];
                                 max = w;
-                                bContinue = true;
+                                bContinue = true;//标志位：说明子节点找到了可以作为其新父关键帧的帧
                             }
                         }
                     }
                 }
             }
 
+            //如果找到了新的父关键帧，更新各关键帧的联系
             if(bContinue)
             {
-                pC->ChangeParent(pP);
-                sParentCandidates.insert(pC);
-                mspChildrens.erase(pC);
+                pC->ChangeParent(pP);//将pP更新为新的父关键帧
+                sParentCandidates.insert(pC);//将自身加入候选父关键帧中
+                mspChildrens.erase(pC);//从子关键帧中删除自身
             }
             else
                 break;
         }
 
-        // If a children has no covisibility links with any parent candidate, assign to the original parent of this KF
+        //如果有某子关键帧没有找到新的父关键帧，将最开始的关键帧（爷爷）作为新的父关键帧
         if(!mspChildrens.empty())
             for(set<KeyFrame*>::iterator sit=mspChildrens.begin(); sit!=mspChildrens.end(); sit++)
             {
                 (*sit)->ChangeParent(mpParent);
             }
 
-        mpParent->EraseChild(this);
-        mTcp = Tcw*mpParent->GetPoseInverse();
-        mbBad = true;
+        mpParent->EraseChild(this);//删除当前关键帧与父关键帧的父子联系
+        mTcp = Tcw*mpParent->GetPoseInverse();//?表示原父关键帧到当前关键帧的位姿变换，在保存位姿的时候使用
+        mbBad = true;//标记当前关键帧已经被删除
     }
 
 
-    mpMap->EraseKeyFrame(this);
-    mpKeyFrameDB->erase(this);
+    mpMap->EraseKeyFrame(this);//从地图中删除该关键帧
+    mpKeyFrameDB->erase(this);//从关键帧数据库中删除该关键帧
 }
 
 bool KeyFrame::isBad()

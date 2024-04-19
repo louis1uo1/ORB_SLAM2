@@ -209,19 +209,20 @@ protected:
     // Grid over the image to speed up feature matching
     std::vector< std::vector <std::vector<size_t> > > mGrid;
 
-    std::map<KeyFrame*,int> mConnectedKeyFrameWeights;
-    std::vector<KeyFrame*> mvpOrderedConnectedKeyFrames;
+    std::map<KeyFrame*,int> mConnectedKeyFrameWeights;//储存与当前关键帧有连接关系（至少15个共视点）的关键帧和权重
+    std::vector<KeyFrame*> mvpOrderedConnectedKeyFrames;//储存共视关键帧中权重从大到小排序后的关键帧 
     std::vector<int> mvOrderedWeights;
 
     // Spanning Tree and Loop Edges
     bool mbFirstConnection;
-    KeyFrame* mpParent;
-    std::set<KeyFrame*> mspChildrens;
+    KeyFrame* mpParent;//父关键帧：该关键帧的共视帧中权重最大的一个关键帧
+    std::set<KeyFrame*> mspChildrens;//子关键帧：与父关键帧相对应
     std::set<KeyFrame*> mspLoopEdges;
 
     // Bad flags
-    bool mbNotErase;
-    bool mbToBeErased;
+    bool mbNotErase;//关键帧不能被删除的标志位：true-不能删 false-能删
+    bool mbToBeErased;//标记当前帧是否被豁免过删除特权
+
     bool mbBad;    
 
     float mHalfBaseline; // Only for visualization

@@ -223,11 +223,17 @@ void Initializer::FindFundamental(vector<bool> &vbMatchesInliers, float &score, 
 }
 
 
+/**
+ * @brief 应用直接线性变化法（DLT）计算单应矩阵
+ * @param vP1 参考帧中归一化的特征点
+ * @param vP2 当前帧中归一化的特征点
+ * @return 
+ */
 cv::Mat Initializer::ComputeH21(const vector<cv::Point2f> &vP1, const vector<cv::Point2f> &vP2)
 {
-    const int N = vP1.size();
+    const int N = vP1.size();//特征点对数量
 
-    cv::Mat A(2*N,9,CV_32F);
+    cv::Mat A(2*N,9,CV_32F);//构造用于计算的A矩阵
 
     for(int i=0; i<N; i++)
     {
@@ -255,16 +261,21 @@ cv::Mat Initializer::ComputeH21(const vector<cv::Point2f> &vP1, const vector<cv:
         A.at<float>(2*i+1,6) = -u2*u1;
         A.at<float>(2*i+1,7) = -u2*v1;
         A.at<float>(2*i+1,8) = -u2;
-
     }
 
-    cv::Mat u,w,vt;
+    cv::Mat u,w,vt;//左奇异矩阵，对角矩阵，右奇异矩阵
 
-    cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
-
+    cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);//SVD分解得到u，w，vt
+    //!根据最小二乘法计算可知vt的最后一列的向量为所求的单应矩阵
     return vt.row(8).reshape(0, 3);
 }
 
+/**
+ * @brief 计算基础矩阵
+ * @param vP1 参考帧中归一化的特征点
+ * @param vP2 当前帧中归一化的特征点
+ * @return 基础矩阵F21
+ */
 cv::Mat Initializer::ComputeF21(const vector<cv::Point2f> &vP1,const vector<cv::Point2f> &vP2)
 {
     const int N = vP1.size();
@@ -291,21 +302,32 @@ cv::Mat Initializer::ComputeF21(const vector<cv::Point2f> &vP1,const vector<cv::
 
     cv::Mat u,w,vt;
 
-    cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
+    cv::SVDecomp(A,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);//SVD分解得到u,w,vt
 
-    cv::Mat Fpre = vt.row(8).reshape(0, 3);
+    cv::Mat Fpre = vt.row(8).reshape(0, 3);//vt的最后一列
 
+    //!基础矩阵的秩为2,而我们不敢保证计算得到的这个结果的秩为2,所以需要通过第二次奇异值分解,来强制使其秩为2
     cv::SVDecomp(Fpre,w,u,vt,cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
 
+    //强制将第3个奇异值设置为0，满足秩2约束，
     w.at<float>(2)=0;
 
+    //重新组合好满足秩约束的基础矩阵，作为最终计算结果返回 
     return  u*cv::Mat::diag(w)*vt;
 }
 
+/**
+ * @brief 对得到的单应矩阵计算双向重投影误差，并利用卡方检验计算置信度得分
+ * @param H21 从参考帧到当前帧的单应矩阵
+ * @param H12 从前帧到当参考帧的单应矩阵
+ * @param vbMatchesInliers 记录内点的标记
+ * @param sigma 方差，默认为1
+ * @return 返回单应矩阵的得分
+ */
 float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vector<bool> &vbMatchesInliers, float sigma)
 {   
-    const int N = mvMatches12.size();
-
+    const int N = mvMatches12.size();//特征点对数量
+    //获取单应矩阵中各元素
     const float h11 = H21.at<float>(0,0);
     const float h12 = H21.at<float>(0,1);
     const float h13 = H21.at<float>(0,2);
@@ -328,16 +350,18 @@ float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vecto
 
     vbMatchesInliers.resize(N);
 
-    float score = 0;
+    float score = 0;//当前单应矩阵的得分
 
+	//基于卡方检验计算出的阈值（假设测量有一个像素的偏差），自由度为2的卡方分布、显著性水平为0.05对应的临界阈值
     const float th = 5.991;
 
-    const float invSigmaSquare = 1.0/(sigma*sigma);
-
+    const float invSigmaSquare = 1.0/(sigma*sigma);//方差平方的倒数
+    
+    //!遍历匹配的特征点对，计算重投影误差
     for(int i=0; i<N; i++)
     {
         bool bIn = true;
-
+        //提取参考帧和当前帧之间的特征匹配点对
         const cv::KeyPoint &kp1 = mvKeys1[mvMatches12[i].first];
         const cv::KeyPoint &kp2 = mvKeys2[mvMatches12[i].second];
 
@@ -346,25 +370,23 @@ float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vecto
         const float u2 = kp2.pt.x;
         const float v2 = kp2.pt.y;
 
-        // Reprojection error in first image
-        // x2in1 = H12*x2
-
+        //!计算从当前帧到参考帧的投影误差
         const float w2in1inv = 1.0/(h31inv*u2+h32inv*v2+h33inv);
         const float u2in1 = (h11inv*u2+h12inv*v2+h13inv)*w2in1inv;
         const float v2in1 = (h21inv*u2+h22inv*v2+h23inv)*w2in1inv;
 
         const float squareDist1 = (u1-u2in1)*(u1-u2in1)+(v1-v2in1)*(v1-v2in1);
 
-        const float chiSquare1 = squareDist1*invSigmaSquare;
+        const float chiSquare1 = squareDist1*invSigmaSquare;//投影误差
 
+        //如果投影误差大于阈值，标记为非内点
         if(chiSquare1>th)
             bIn = false;
+        //如果投影误差小于阈值，该点对为内点，累计得分
         else
             score += th - chiSquare1;
 
-        // Reprojection error in second image
-        // x1in2 = H21*x1
-
+        //!计算从参考帧到当前帧的投影误差，步骤同上
         const float w1in2inv = 1.0/(h31*u1+h32*v1+h33);
         const float u1in2 = (h11*u1+h12*v1+h13)*w1in2inv;
         const float v1in2 = (h21*u1+h22*v1+h23)*w1in2inv;
@@ -378,15 +400,23 @@ float Initializer::CheckHomography(const cv::Mat &H21, const cv::Mat &H12, vecto
         else
             score += th - chiSquare2;
 
+        //记录是否为内点
         if(bIn)
             vbMatchesInliers[i]=true;
         else
             vbMatchesInliers[i]=false;
     }
-
     return score;
 }
 
+/**
+ * @brief 计算投影点到对应极限的距离（误差），对基础矩阵利用卡方检验计算置信度得分
+ * @param F21 参与计算的基础矩阵
+ * @param vbMatchesInliers 内点的标记
+ * @param sigma 方差 默认为1
+ * @return 得分
+ * @note 选择评分最高的基础矩阵
+ */
 float Initializer::CheckFundamental(const cv::Mat &F21, vector<bool> &vbMatchesInliers, float sigma)
 {
     const int N = mvMatches12.size();
@@ -403,13 +433,14 @@ float Initializer::CheckFundamental(const cv::Mat &F21, vector<bool> &vbMatchesI
 
     vbMatchesInliers.resize(N);
 
-    float score = 0;
+    float score = 0;//得分
 
-    const float th = 3.841;
-    const float thScore = 5.991;
+    const float th = 3.841;//自由度为1的卡方分布、显著性水平为0.05对应的临界阈值
+    const float thScore = 5.991;//自由度为2的卡方分布，显著性水平为0.05，对应的临界阈值
 
     const float invSigmaSquare = 1.0/(sigma*sigma);
 
+    //遍历匹配的特征点
     for(int i=0; i<N; i++)
     {
         bool bIn = true;
@@ -422,27 +453,25 @@ float Initializer::CheckFundamental(const cv::Mat &F21, vector<bool> &vbMatchesI
         const float u2 = kp2.pt.x;
         const float v2 = kp2.pt.y;
 
-        // Reprojection error in second image
-        // l2=F21x1=(a2,b2,c2)
-
+        //!计算当前帧的投影点到对应极线的距离
         const float a2 = f11*u1+f12*v1+f13;
         const float b2 = f21*u1+f22*v1+f23;
         const float c2 = f31*u1+f32*v1+f33;
 
-        const float num2 = a2*u2+b2*v2+c2;
+        const float num2 = a2*u2+b2*v2+c2;//投影点到对应极线的距离
 
         const float squareDist1 = num2*num2/(a2*a2+b2*b2);
 
-        const float chiSquare1 = squareDist1*invSigmaSquare;
+        const float chiSquare1 = squareDist1*invSigmaSquare;//误差
 
+        //如果误差大于阈值，标记为非内点
         if(chiSquare1>th)
             bIn = false;
+        //如果误差小于阈值，该点对为内点，累计得分
         else
             score += thScore - chiSquare1;
 
-        // Reprojection error in second image
-        // l1 =x2tF21=(a1,b1,c1)
-
+        //!计算参考帧的投影点到对应极线的距离
         const float a1 = f11*u2+f21*v2+f31;
         const float b1 = f12*u2+f22*v2+f32;
         const float c1 = f13*u2+f23*v2+f33;
@@ -453,17 +482,18 @@ float Initializer::CheckFundamental(const cv::Mat &F21, vector<bool> &vbMatchesI
 
         const float chiSquare2 = squareDist2*invSigmaSquare;
 
+        
         if(chiSquare2>th)
             bIn = false;
         else
             score += thScore - chiSquare2;
-
+        
+        //记录内点
         if(bIn)
             vbMatchesInliers[i]=true;
         else
             vbMatchesInliers[i]=false;
     }
-
     return score;
 }
 
@@ -731,6 +761,14 @@ bool Initializer::ReconstructH(vector<bool> &vbMatchesInliers, cv::Mat &H21, cv:
     return false;
 }
 
+/**
+ * @brief 利用三角测量，从相机的运动估计特征点的空间位置（深度）
+ * @param kp1 参考帧中的特征点
+ * @param kp2 当前帧中的特征点
+ * @param P1 参考帧的投影矩阵
+ * @param P2 当前帧的投影矩阵
+ * @param x3D 三角化得到的点的三维坐标
+ */
 void Initializer::Triangulate(const cv::KeyPoint &kp1, const cv::KeyPoint &kp2, const cv::Mat &P1, const cv::Mat &P2, cv::Mat &x3D)
 {
     cv::Mat A(4,4,CV_32F);
@@ -746,25 +784,30 @@ void Initializer::Triangulate(const cv::KeyPoint &kp1, const cv::KeyPoint &kp2, 
     x3D = x3D.rowRange(0,3)/x3D.at<float>(3);
 }
 
+/**
+ * @brief 坐标归一化
+ * @param vKeys 待归一化处理的特征点
+ * @param vNormalizedPoints 归一化的特征点
+ * @param T 特征点归一化后的变换矩阵
+ */
 void Initializer::Normalize(const vector<cv::KeyPoint> &vKeys, vector<cv::Point2f> &vNormalizedPoints, cv::Mat &T)
 {
-    float meanX = 0;
-    float meanY = 0;
-    const int N = vKeys.size();
+    float meanX = 0;//vKeys在x方向上的坐标均值
+    float meanY = 0;//vKeys在y方向上的坐标均值
+    const int N = vKeys.size();//参与归一化的特征点数量
 
     vNormalizedPoints.resize(N);
-
+    //求坐标偏离均值
     for(int i=0; i<N; i++)
     {
         meanX += vKeys[i].pt.x;
         meanY += vKeys[i].pt.y;
     }
-
     meanX = meanX/N;
     meanY = meanY/N;
 
-    float meanDevX = 0;
-    float meanDevY = 0;
+    float meanDevX = 0;//x方向上坐标偏离均值的程度
+    float meanDevY = 0;//y方向上坐标偏离均值的程度
 
     for(int i=0; i<N; i++)
     {
@@ -774,13 +817,13 @@ void Initializer::Normalize(const vector<cv::KeyPoint> &vKeys, vector<cv::Point2
         meanDevX += fabs(vNormalizedPoints[i].x);
         meanDevY += fabs(vNormalizedPoints[i].y);
     }
-
     meanDevX = meanDevX/N;
     meanDevY = meanDevY/N;
 
-    float sX = 1.0/meanDevX;
-    float sY = 1.0/meanDevY;
+    float sX = 1.0/meanDevX;//x方向上的尺度缩放因子 
+    float sY = 1.0/meanDevY;//y方向上的尺度缩放因子
 
+    //求归一化后的坐标
     for(int i=0; i<N; i++)
     {
         vNormalizedPoints[i].x = vNormalizedPoints[i].x * sX;
@@ -795,38 +838,54 @@ void Initializer::Normalize(const vector<cv::KeyPoint> &vKeys, vector<cv::Point2
 }
 
 
+/**
+ * @brief 对特征匹配点进行三角化，从中筛选出合格的三维点
+ * @param R 参考帧到当前帧的旋转矩阵 
+ * @param t 参考帧到当前帧的平移向量
+ * @param vKeys1 参考帧的特征点
+ * @param vKeys2 当前帧的特征点
+ * @param vMatches12 两帧特征点的匹配关系
+ * @param vbMatchesInliers 内点的标记
+ * @param K 相机内参
+ * @param vP3D 三角化后特征点的空间坐标
+ * @param th2 重投影误差的阈值
+ * @param vbGood 标记合格的三角化的特征点
+ * @param parallax 两个相机光心的视差角
+ * @return 合格点的数量
+ */
 int Initializer::CheckRT(const cv::Mat &R, const cv::Mat &t, const vector<cv::KeyPoint> &vKeys1, const vector<cv::KeyPoint> &vKeys2,
                        const vector<Match> &vMatches12, vector<bool> &vbMatchesInliers,
                        const cv::Mat &K, vector<cv::Point3f> &vP3D, float th2, vector<bool> &vbGood, float &parallax)
 {
-    // Calibration parameters
+    //相机内参
     const float fx = K.at<float>(0,0);
     const float fy = K.at<float>(1,1);
     const float cx = K.at<float>(0,2);
     const float cy = K.at<float>(1,2);
 
-    vbGood = vector<bool>(vKeys1.size(),false);
+    vbGood = vector<bool>(vKeys1.size(),false);//标记合格的三角化的特征点
     vP3D.resize(vKeys1.size());
 
     vector<float> vCosParallax;
     vCosParallax.reserve(vKeys1.size());
 
-    // Camera 1 Projection Matrix K[I|0]
-    cv::Mat P1(3,4,CV_32F,cv::Scalar(0));
-    K.copyTo(P1.rowRange(0,3).colRange(0,3));
+    //投影矩阵P是一个3x4的矩阵，可以将空间中的一个点投影到平面上，获得其平面坐标，这里均指的是齐次坐标。
+    cv::Mat P1(3,4,CV_32F,cv::Scalar(0));//投影矩阵P1=K*[I|0]
+    K.copyTo(P1.rowRange(0,3).colRange(0,3));//将整个K矩阵拷贝到P1矩阵的左侧3x3矩阵，
 
-    cv::Mat O1 = cv::Mat::zeros(3,1,CV_32F);
+    cv::Mat O1 = cv::Mat::zeros(3,1,CV_32F);//把相机1光心作为世界坐标系的原点
 
-    // Camera 2 Projection Matrix K[R|t]
-    cv::Mat P2(3,4,CV_32F);
+    
+    cv::Mat P2(3,4,CV_32F);//投影矩阵P2=K*[R|t]
     R.copyTo(P2.rowRange(0,3).colRange(0,3));
     t.copyTo(P2.rowRange(0,3).col(3));
     P2 = K*P2;
 
-    cv::Mat O2 = -R.t()*t;
+    cv::Mat O2 = -R.t()*t;//相机2的光心在相机1坐标系下的坐标
 
     int nGood=0;
 
+    //遍历特征点对，筛选合格的三维点
     for(size_t i=0, iend=vMatches12.size();i<iend;i++)
     {
         if(!vbMatchesInliers[i])
@@ -834,38 +893,42 @@ int Initializer::CheckRT(const cv::Mat &R, const cv::Mat &t, const vector<cv::Ke
 
         const cv::KeyPoint &kp1 = vKeys1[vMatches12[i].first];
         const cv::KeyPoint &kp2 = vKeys2[vMatches12[i].second];
-        cv::Mat p3dC1;
+        cv::Mat p3dC1;//三角化得到的三维坐标
 
-        Triangulate(kp1,kp2,P1,P2,p3dC1);
+        Triangulate(kp1,kp2,P1,P2,p3dC1);//三角化
 
+        //!合格的三维点要同时满足以下条件：
+        //!1.三角化得到的点的坐标要为实数
         if(!isfinite(p3dC1.at<float>(0)) || !isfinite(p3dC1.at<float>(1)) || !isfinite(p3dC1.at<float>(2)))
         {
             vbGood[vMatches12[i].first]=false;
             continue;
         }
 
-        // Check parallax
+        //!2.三维点深度值要为正、两相机光心视差角要满足一定要求
         cv::Mat normal1 = p3dC1 - O1;
         float dist1 = cv::norm(normal1);
 
         cv::Mat normal2 = p3dC1 - O2;
         float dist2 = cv::norm(normal2);
 
-        float cosParallax = normal1.dot(normal2)/(dist1*dist2);
+        float cosParallax = normal1.dot(normal2)/(dist1*dist2);//两相机光心视差角的余弦值
 
-        // Check depth in front of first camera (only if enough parallax, as "infinite" points can easily go to negative depth)
+        //在相机1的深度和视差角
         if(p3dC1.at<float>(2)<=0 && cosParallax<0.99998)
             continue;
 
-        // Check depth in front of second camera (only if enough parallax, as "infinite" points can easily go to negative depth)
         cv::Mat p3dC2 = R*p3dC1+t;
 
+        //在相机2的深度和视差角
         if(p3dC2.at<float>(2)<=0 && cosParallax<0.99998)
             continue;
 
-        // Check reprojection error in first image
+        //!3.三维点的投影点误差小于设定的阈值
+        //三维点在参考帧的投影误差
         float im1x, im1y;
         float invZ1 = 1.0/p3dC1.at<float>(2);
+        //投影坐标
         im1x = fx*p3dC1.at<float>(0)*invZ1+cx;
         im1y = fy*p3dC1.at<float>(1)*invZ1+cy;
 
@@ -874,7 +937,7 @@ int Initializer::CheckRT(const cv::Mat &R, const cv::Mat &t, const vector<cv::Ke
         if(squareError1>th2)
             continue;
 
-        // Check reprojection error in second image
+        //三维点在当前帧的投影误差
         float im2x, im2y;
         float invZ2 = 1.0/p3dC2.at<float>(2);
         im2x = fx*p3dC2.at<float>(0)*invZ2+cx;
@@ -885,25 +948,29 @@ int Initializer::CheckRT(const cv::Mat &R, const cv::Mat &t, const vector<cv::Ke
         if(squareError2>th2)
             continue;
 
-        vCosParallax.push_back(cosParallax);
-        vP3D[vMatches12[i].first] = cv::Point3f(p3dC1.at<float>(0),p3dC1.at<float>(1),p3dC1.at<float>(2));
+        vCosParallax.push_back(cosParallax);//储存合格三维点的视差角
+        vP3D[vMatches12[i].first] = cv::Point3f(p3dC1.at<float>(0),p3dC1.at<float>(1),p3dC1.at<float>(2));//储存合格三维点的空间坐标
         nGood++;
 
+        //记录合格点
         if(cosParallax<0.99998)
             vbGood[vMatches12[i].first]=true;
     }
 
+    //对于合格点
     if(nGood>0)
-    {
+    {   
+        //对视差角从小到大排序
         sort(vCosParallax.begin(),vCosParallax.end());
-
+        //如果合格点数量<50，取最后那个点（视差角较大）的视差角
+        //如果>50,取第50个点的视差角
         size_t idx = min(50,int(vCosParallax.size()-1));
         parallax = acos(vCosParallax[idx])*180/CV_PI;
     }
     else
         parallax=0;
 
-    return nGood;
+    return nGood;//返回合格点的数量
 }
 
 void Initializer::DecomposeE(const cv::Mat &E, cv::Mat &R1, cv::Mat &R2, cv::Mat &t)

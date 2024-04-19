@@ -27,7 +27,7 @@
 namespace ORB_SLAM2
 {
 
-// THIS IS THE INITIALIZER FOR MONOCULAR SLAM. NOT USED IN THE STEREO OR RGBD CASE.
+//Initializer类仅用于单目相机初始化 
 class Initializer
 {
     typedef pair<int,int> Match;
@@ -39,7 +39,7 @@ public:
 
     // Computes in parallel a fundamental matrix and a homography
     // Selects a model and tries to recover the motion and the structure from motion
-    bool Initialize(const Frame &CurrentFrame, const vector<int> &vMatches12,
+    bool             0 (const Frame &CurrentFrame, const vector<int> &vMatches12,
                     cv::Mat &R21, cv::Mat &t21, vector<cv::Point3f> &vP3D, vector<bool> &vbTriangulated);
 
 
@@ -72,15 +72,15 @@ private:
     void DecomposeE(const cv::Mat &E, cv::Mat &R1, cv::Mat &R2, cv::Mat &t);
 
 
-    // Keypoints from Reference Frame (Frame 1)
+    //参考帧中的特征点
     vector<cv::KeyPoint> mvKeys1;
 
-    // Keypoints from Current Frame (Frame 2)
+    //当前帧中的特征点
     vector<cv::KeyPoint> mvKeys2;
 
-    // Current Matches from Reference to Current
+    //记录ReferenceFrame到CurrentFrame匹配上的特征点对,Match的数据结构是pair
     vector<Match> mvMatches12;
-    vector<bool> mvbMatched1;
+    vector<bool> mvbMatched1;//标记ReferenceFrame的每个特征点在CurrentFrame是否有匹配的特征点
 
     // Calibration
     cv::Mat mK;
