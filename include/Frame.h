@@ -116,7 +116,7 @@ public:
     static float cy;//相机中心点的y坐标
     static float invfx;//x方向焦距的逆
     static float invfy;//y方向焦距的逆
-   cv::Mat mDistCoef;//opencv中的去畸变矩阵，储存了一些畸变系数
+    cv::Mat mDistCoef;//opencv中的去畸变矩阵，储存了一些畸变系数
 
     //基线距离与焦距的乘积
     float mbf;
@@ -128,25 +128,18 @@ public:
     // Far points are inserted as in the monocular case from 2 views.
     float mThDepth;
 
-    // Number of KeyPoints.
-    int N;
+    int N;//特征点数量
 
-    // Vector of keypoints (original for visualization) and undistorted (actually used by the system).
-    // In the stereo case, mvKeysUn is redundant as images must be rectified.
-    // In the RGB-D case, RGB images can be distorted.
-    std::vector<cv::KeyPoint> mvKeys, mvKeysRight;
-    std::vector<cv::KeyPoint> mvKeysUn;
+    std::vector<cv::KeyPoint> mvKeys, mvKeysRight;//左目图像的特征点；右目图像的特征点
+    std::vector<cv::KeyPoint> mvKeysUn;//左目图像校正后的特征点
 
-    // Corresponding stereo coordinate and depth for each keypoint.
-    // "Monocular" keypoints have a negative value.
-    std::vector<float> mvuRight;
-    std::vector<float> mvDepth;
+    std::vector<float> mvuRight;//储存右目匹配点索引；对于单目相机为-1
+    std::vector<float> mvDepth;//存储特征点的深度信息；对于单目相机为-1
 
-    // Bag of Words Vector structures.
     DBoW2::BowVector mBowVec;//词袋向量
     DBoW2::FeatureVector mFeatVec;//词袋的特征向量
 
-    // ORB descriptor, each row associated to a keypoint.
+    ///左目图像和右目图像特征点对应的描述子；矩阵的每一行对应一个特征点的描述子
     cv::Mat mDescriptors, mDescriptorsRight;
 
     // MapPoints associated to keypoints, NULL pointer if no association.

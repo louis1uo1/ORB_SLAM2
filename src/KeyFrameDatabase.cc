@@ -36,7 +36,10 @@ KeyFrameDatabase::KeyFrameDatabase (const ORBVocabulary &voc):
     mvInvertedFile.resize(voc.size());
 }
 
-
+/**
+ * @brief 有新的关键帧，根据该KF的词袋向量更新数据库的倒排索引
+ * @param pKF 新添加的关键帧
+ */
 void KeyFrameDatabase::add(KeyFrame *pKF)
 {
     unique_lock<mutex> lock(mMutex);
@@ -45,6 +48,10 @@ void KeyFrameDatabase::add(KeyFrame *pKF)
         mvInvertedFile[vit->first].push_back(pKF);
 }
 
+/**
+ * @brief 关键帧被删除后，更新数据库关于该KF的倒排索引
+ * @param pKF 要删除的关键帧
+ */
 void KeyFrameDatabase::erase(KeyFrame* pKF)
 {
     unique_lock<mutex> lock(mMutex);
@@ -196,6 +203,15 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
     return vpLoopCandidates;
 }
 
+/**
+ * @brief 在重定位跟踪中，找到该帧的候选关键帧
+ * @param F 重定位的图像帧
+ * @return 候选关键帧组
+ * @note step1 找出和当前帧具有共同单词的所有关键帧
+ * @note step2 找到相似度较高的关键帧，计算其相似度
+ * @note step3 对于在step2中找到的关键帧，找到其对应的共视关键（共视程度最高的10个作为一组），计算每组的累计相似度得分
+ * @note step4 返回所有 累计相似度得分较高的组 中的相似度最高的一个关键帧 作为候选关键帧组
+ */
 vector<KeyFrame*> KeyFrameDatabase::DetectRelocalizationCandidates(Frame *F)
 {
     list<KeyFrame*> lKFsSharingWords;

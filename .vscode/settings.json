@@ -5,5 +5,6 @@
         "ostream": "cpp"
     },
     "C_Cpp.default.compilerPath": "",
-    "commentTranslate.hover.enabled": false
+    "commentTranslate.hover.enabled": true,
+    "commentTranslate.targetLanguage": "zh-CN"
 }
