@@ -617,7 +617,7 @@ void ExtractorNode::DivideNode(ExtractorNode &n1, ExtractorNode &n2, ExtractorNo
  * @param level         指定的金字塔图层，并未使用
  * @return          筛选过的特征点容器vector<cv::KeyPoint> vResultKeys;
  * @note  函数比较复杂 理解原理！原理图：
- * picture\八叉树原理图.jpg
+ * picture\八叉树原理图.jpg 
  */
 vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>& vToDistributeKeys, const int &minX,
                                        const int &maxX, const int &minY, const int &maxY, const int &N, const int &level)

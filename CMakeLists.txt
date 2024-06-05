@@ -112,3 +112,12 @@ add_executable(mono_euroc
 Examples/Monocular/mono_euroc.cc)
 target_link_libraries(mono_euroc ${PROJECT_NAME})
 
+add_executable(mono_underwater_cave
+Examples/Monocular/mono_underwater_cave.cc)
+target_link_libraries(mono_underwater_cave ${PROJECT_NAME})
+
+add_executable(mono_CLAHE_test
+Examples/Monocular/mono_CLAHE_test.cc)
+target_link_libraries(mono_CLAHE_test ${PROJECT_NAME})
+
+
