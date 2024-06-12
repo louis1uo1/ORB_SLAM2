@@ -901,8 +901,19 @@ int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2, cv::Mat F
     return nmatches;
 }
 
+/**
+ * @brief 地图点融合
+ * @param pKF 关键帧
+ * @param vpMapPoints 地图点
+ * @param th 匹配搜索的阈值
+ * @return 融合的地图点的数量
+ * @note 融合策略：
+ * 1.如果地图点能匹配关键帧的特征点，并且该点有对应的地图点，那么选择观测数目多的替换两个地图点
+ * 2.如果地图点能匹配关键帧的特征点，并且该特征点点没有对应的地图点，那么把地图点作为该关键帧的地图点
+ */
 int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const float th)
 {
+    //获取相机的位姿
     cv::Mat Rcw = pKF->GetRotation();
     cv::Mat tcw = pKF->GetTranslation();
 
@@ -918,6 +929,7 @@ int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const
 
     const int nMPs = vpMapPoints.size();
 
+    //遍历地图点 将地图点投影至关键帧中 搜索匹配点
     for(int i=0; i<nMPs; i++)
     {
         MapPoint* pMP = vpMapPoints[i];
@@ -931,7 +943,7 @@ int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const
         cv::Mat p3Dw = pMP->GetWorldPos();
         cv::Mat p3Dc = Rcw*p3Dw + tcw;
 
-        // Depth must be positive
+        //深度为正
         if(p3Dc.at<float>(2)<0.0f)
             continue;
 
@@ -942,7 +954,7 @@ int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const
         const float u = fx*x+cx;
         const float v = fy*y+cy;
 
-        // Point must be inside the image
+        //投影的点要在关键帧有效范围中
         if(!pKF->IsInImage(u,v))
             continue;
 
@@ -953,32 +965,32 @@ int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const
         cv::Mat PO = p3Dw-Ow;
         const float dist3D = cv::norm(PO);
 
-        // Depth must be inside the scale pyramid of the image
+        //地图点到关键帧相机光心距离需满足在有效范围内
         if(dist3D<minDistance || dist3D>maxDistance )
             continue;
 
-        // Viewing angle must be less than 60 deg
+        // 地图点到光心的连线与该地图点的平均观测向量之间夹角要小于60°
         cv::Mat Pn = pMP->GetNormal();
 
         if(PO.dot(Pn)<0.5*dist3D)
             continue;
 
+        //根据地图点到相机光心距离预测匹配点所在的金字塔尺度
         int nPredictedLevel = pMP->PredictScale(dist3D,pKF);
 
-        // Search in a radius
+        //确定搜索范围
         const float radius = th*pKF->mvScaleFactors[nPredictedLevel];
-
+        //获取搜索范围内的特征点 作为候选匹配点
         const vector<size_t> vIndices = pKF->GetFeaturesInArea(u,v,radius);
 
         if(vIndices.empty())
             continue;
-
-        // Match to the most similar keypoint in the radius
-
+        //计算地图点的描述子
         const cv::Mat dMP = pMP->GetDescriptor();
 
         int bestDist = 256;
         int bestIdx = -1;
+        //遍历候选点，找到最佳匹配点
         for(vector<size_t>::const_iterator vit=vIndices.begin(), vend=vIndices.end(); vit!=vend; vit++)
         {
             const size_t idx = *vit;
@@ -1027,7 +1039,10 @@ int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const
             }
         }
 
-        // If there is already a MapPoint replace otherwise add new measurement
+        //对于找到的最佳匹配点，检查是否满足阈值的要求；其是否已经有对应的地图点了
+        //有：选择观测次数多的地图点作为两者的地图点
+        //没有：将pMP作为匹配点的地图点
+        //通过这样的方法完成地图点的融合
         if(bestDist<=TH_LOW)
         {
             MapPoint* pMPinKF = pKF->GetMapPoint(bestIdx);

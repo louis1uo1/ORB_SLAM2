@@ -79,14 +79,20 @@ void KeyFrameDatabase::clear()
     mvInvertedFile.resize(mpVoc->size());
 }
 
-
+/**
+ * @brief 寻找初始的闭环候选帧组
+ * @param pKF 当前帧
+ * @param minScore 最低相似度得分
+ * @return 闭环候选帧组
+ */
 vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float minScore)
 {
+    //找到与当前帧相连（有>15个共视地图点）的关键帧
+    //这些相连关键帧都是局部相连，在闭环检测的时候将被排除
     set<KeyFrame*> spConnectedKeyFrames = pKF->GetConnectedKeyFrames();
     list<KeyFrame*> lKFsSharingWords;
 
-    // Search all keyframes that share a word with current keyframes
-    // Discard keyframes connected to the query keyframe
+    //找到与当前帧具有公共单词的所有关键帧（排除掉spConnectedKeyFrames）
     {
         unique_lock<mutex> lock(mMutex);
 
@@ -114,25 +120,26 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
     if(lKFsSharingWords.empty())
         return vector<KeyFrame*>();
 
-    list<pair<float,KeyFrame*> > lScoreAndMatch;
+    list<pair<float,KeyFrame*> > lScoreAndMatch;//数据结构<得分，关键帧>
 
-    // Only compare against those keyframes that share enough words
+    
     int maxCommonWords=0;
+    //找到lKFsSharingWords中具有最多共同单词的最大单词数
     for(list<KeyFrame*>::iterator lit=lKFsSharingWords.begin(), lend= lKFsSharingWords.end(); lit!=lend; lit++)
     {
         if((*lit)->mnLoopWords>maxCommonWords)
             maxCommonWords=(*lit)->mnLoopWords;
     }
 
-    int minCommonWords = maxCommonWords*0.8f;
+    int minCommonWords = maxCommonWords*0.8f;//最小阈值
 
     int nscores=0;
 
-    // Compute similarity score. Retain the matches whose score is higher than minScore
+    //遍历lKFsSharingWords
     for(list<KeyFrame*>::iterator lit=lKFsSharingWords.begin(), lend= lKFsSharingWords.end(); lit!=lend; lit++)
     {
         KeyFrame* pKFi = *lit;
-
+        //计算lKFsSharingWords中满足minCommonWords条件的关键帧 和 当前帧 的单词相似度得分
         if(pKFi->mnLoopWords>minCommonWords)
         {
             nscores++;
@@ -140,6 +147,7 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
             float si = mpVoc->score(pKF->mBowVec,pKFi->mBowVec);
 
             pKFi->mLoopScore = si;
+            //保存得分满足minScore条件的关键帧
             if(si>=minScore)
                 lScoreAndMatch.push_back(make_pair(si,pKFi));
         }
@@ -151,21 +159,26 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
     list<pair<float,KeyFrame*> > lAccScoreAndMatch;
     float bestAccScore = minScore;
 
-    // Lets now accumulate score by covisibility
+    //遍历lScoreAndMatch
     for(list<pair<float,KeyFrame*> >::iterator it=lScoreAndMatch.begin(), itend=lScoreAndMatch.end(); it!=itend; it++)
     {
         KeyFrame* pKFi = it->second;
+        //获取其有共视程度高的关键帧组
         vector<KeyFrame*> vpNeighs = pKFi->GetBestCovisibilityKeyFrames(10);
 
         float bestScore = it->first;
         float accScore = it->first;
         KeyFrame* pBestKF = pKFi;
+        //遍历共视关键帧组，计算累计得分
         for(vector<KeyFrame*>::iterator vit=vpNeighs.begin(), vend=vpNeighs.end(); vit!=vend; vit++)
         {
             KeyFrame* pKF2 = *vit;
+            //如果该共视帧满足 作为pKF的候选关键帧中；公共单词数>minCommonWords
+            //则累计计算其与当前帧的相似度得分 
             if(pKF2->mnLoopQuery==pKF->mnId && pKF2->mnLoopWords>minCommonWords)
             {
                 accScore+=pKF2->mLoopScore;
+                //记录当前组中最高得分的关键帧和最高得分
                 if(pKF2->mLoopScore>bestScore)
                 {
                     pBestKF=pKF2;
@@ -173,32 +186,34 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
                 }
             }
         }
-
+        //记录每个关键组的得分最高的关键帧和最高得分
         lAccScoreAndMatch.push_back(make_pair(accScore,pBestKF));
-        if(accScore>bestAccScore)
+
+        if(accScore>bestAccScore)//更新最高累计得分
             bestAccScore=accScore;
     }
 
-    // Return all those keyframes with a score higher than 0.75*bestScore
+    //最低累计得分
     float minScoreToRetain = 0.75f*bestAccScore;
 
     set<KeyFrame*> spAlreadyAddedKF;
     vector<KeyFrame*> vpLoopCandidates;
     vpLoopCandidates.reserve(lAccScoreAndMatch.size());
 
+    //遍历lAccScoreAndMatch，保存满足要求的关键帧
     for(list<pair<float,KeyFrame*> >::iterator it=lAccScoreAndMatch.begin(), itend=lAccScoreAndMatch.end(); it!=itend; it++)
     {
+        //要求累计得分>minScoreToRetain
         if(it->first>minScoreToRetain)
         {
             KeyFrame* pKFi = it->second;
-            if(!spAlreadyAddedKF.count(pKFi))
+            if(!spAlreadyAddedKF.count(pKFi))//防止重复添加
             {
                 vpLoopCandidates.push_back(pKFi);
                 spAlreadyAddedKF.insert(pKFi);
             }
         }
     }
-
 
     return vpLoopCandidates;
 }

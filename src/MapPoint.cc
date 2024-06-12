@@ -305,7 +305,10 @@ bool MapPoint::isBad()
     return mbBad;
 }
 
-//??添加地图点的可视次数？？暂时不理解
+/**
+ * @brief 添加该点的被观测次数
+ * @param n 被观测次数
+ */
 void MapPoint::IncreaseVisible(int n)
 {
     unique_lock<mutex> lock(mMutexFeatures);
@@ -319,7 +322,10 @@ void MapPoint::IncreaseFound(int n)
     mnFound+=n;
 }
 
-//??计算被找到的比例??
+/**
+ * @brief 获取该地图点 被发现次数/被观测册数 的比例
+ * @return 被发现次数/被观测册数 的比例
+ */
 float MapPoint::GetFoundRatio()
 {
     unique_lock<mutex> lock(mMutexFeatures);

@@ -223,6 +223,12 @@ void Sim3Solver::ComputeCentroid(cv::Mat &P, cv::Mat &Pr, cv::Mat &C)
     }
 }
 
+/**
+ * @brief 根据三对匹配的不共线的三维点计算sim3变换
+ * @param P1 匹配的三维点（3x3的矩阵，每一列储存一个点的三维坐标）
+ * @param P2 同上
+ * @note 根据计算sim3（三维空间的相似变换），得到相似变换矩阵
+ */
 void Sim3Solver::ComputeSim3(cv::Mat &P1, cv::Mat &P2)
 {
     // Custom implementation of:

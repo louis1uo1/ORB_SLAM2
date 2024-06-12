@@ -20,7 +20,6 @@
 
 
 #include "Tracking.h"
-
 #include<opencv2/core/core.hpp>
 #include<opencv2/features2d/features2d.hpp>
  #include <unistd.h>
@@ -938,20 +937,24 @@ bool Tracking::TrackWithMotionModel()
     return nmatchesMap>=10;
 }
 
+/**
+ * @brief 局部地图跟踪
+ * @return 跟踪成功-true 失败-false
+ * @note 局部地图跟踪是为了增加更多的匹配关系，优化位姿
+ */
 bool Tracking::TrackLocalMap()
 {
-    // We have an estimation of the camera pose and some map points tracked in the frame.
-    // We retrieve the local map and try to find matches to points in the local map.
-
+    //!1.更新局部地图（局部关键帧 局部地图点）
     UpdateLocalMap();
 
+    //!2.找到能用于投影匹配的局部地图点
     SearchLocalPoints();
 
-    // Optimize Pose
+    //!3.用得到的局部地图点进行BA优化
     Optimizer::PoseOptimization(&mCurrentFrame);
     mnMatchesInliers = 0;
 
-    // Update MapPoints Statistics
+    //!4.更新当前帧的地图点的被观测次数，统计跟踪匹配成功的点
     for(int i=0; i<mCurrentFrame.N; i++)
     {
         if(mCurrentFrame.mvpMapPoints[i])
@@ -973,11 +976,11 @@ bool Tracking::TrackLocalMap()
         }
     }
 
-    // Decide if the tracking was succesful
-    // More restrictive if there was a relocalization recently
+    //如果刚刚有重定位 则跟踪成功的条件更加严格
     if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames && mnMatchesInliers<50)
         return false;
 
+    //跟踪成功的点<30 跟踪失败
     if(mnMatchesInliers<30)
         return false;
     else
@@ -1173,9 +1176,14 @@ void Tracking::CreateNewKeyFrame()
     mpLastKeyFrame = pKF;
 }
 
+/**
+ * @brief 找到有效的局部地图点
+ * @note 局部地图点中已经在当前帧中出现的点不再参与后面的投影匹配
+ * @note 剩下的局部地图点在当前帧的视野范围外的不再参与后面的投影匹配
+ */
 void Tracking::SearchLocalPoints()
 {
-    // Do not search map points already matched
+    //遍历当前帧的地图点，因为这些地图点已经在上一阶段进行过跟踪（投影）了，所以标记这些点不参与之后的投影匹配了
     for(vector<MapPoint*>::iterator vit=mCurrentFrame.mvpMapPoints.begin(), vend=mCurrentFrame.mvpMapPoints.end(); vit!=vend; vit++)
     {
         MapPoint* pMP = *vit;
@@ -1187,24 +1195,25 @@ void Tracking::SearchLocalPoints()
             }
             else
             {
-                pMP->IncreaseVisible();
+                pMP->IncreaseVisible();//该点的被观测次数+1
                 pMP->mnLastFrameSeen = mCurrentFrame.mnId;
                 pMP->mbTrackInView = false;
             }
         }
     }
 
-    int nToMatch=0;
+    int nToMatch=0;//记录能被用于投影匹配的局部地图点
 
-    // Project points in frame and check its visibility
+    //遍历局部地图点
     for(vector<MapPoint*>::iterator vit=mvpLocalMapPoints.begin(), vend=mvpLocalMapPoints.end(); vit!=vend; vit++)
     {
         MapPoint* pMP = *vit;
+        //如果该点已经在当前帧中，跳过
         if(pMP->mnLastFrameSeen == mCurrentFrame.mnId)
             continue;
         if(pMP->isBad())
             continue;
-        // Project (this fills MapPoint variables for matching)
+        //判断该点是否在当前帧的视野范围内，在当前帧的视野范围内才参与后面的投影匹配
         if(mCurrentFrame.isInFrustum(pMP,0.5))
         {
             pMP->IncreaseVisible();
@@ -1218,9 +1227,10 @@ void Tracking::SearchLocalPoints()
         int th = 1;
         if(mSensor==System::RGBD)
             th=3;
-        // If the camera has been relocalised recently, perform a coarser search
+        //如果当前帧最近被用于重定位，则增大搜索阈值
         if(mCurrentFrame.mnId<mnLastRelocFrameId+2)
             th=5;
+        //投影匹配获得更多的匹配关系
         matcher.SearchByProjection(mCurrentFrame,mvpLocalMapPoints,th);
     }
 }
@@ -1235,22 +1245,28 @@ void Tracking::UpdateLocalMap()
     UpdateLocalPoints();
 }
 
+/**
+ * @brief 更新局部关键帧的地图点（将有效的地图点加入到局部地图点中）
+ */
 void Tracking::UpdateLocalPoints()
 {
     mvpLocalMapPoints.clear();
 
+    //遍历局部关键帧
     for(vector<KeyFrame*>::const_iterator itKF=mvpLocalKeyFrames.begin(), itEndKF=mvpLocalKeyFrames.end(); itKF!=itEndKF; itKF++)
     {
         KeyFrame* pKF = *itKF;
-        const vector<MapPoint*> vpMPs = pKF->GetMapPointMatches();
+        const vector<MapPoint*> vpMPs = pKF->GetMapPointMatches();//获取局部关键帧的地图点
 
+        //遍历所有地图点
         for(vector<MapPoint*>::const_iterator itMP=vpMPs.begin(), itEndMP=vpMPs.end(); itMP!=itEndMP; itMP++)
         {
             MapPoint* pMP = *itMP;
-            if(!pMP)
+            if(!pMP)//没有点 跳过
                 continue;
-            if(pMP->mnTrackReferenceForFrame==mCurrentFrame.mnId)
+            if(pMP->mnTrackReferenceForFrame==mCurrentFrame.mnId)//帧重复 跳过
                 continue;
+            //储存局部地图点
             if(!pMP->isBad())
             {
                 mvpLocalMapPoints.push_back(pMP);
@@ -1261,10 +1277,13 @@ void Tracking::UpdateLocalPoints()
 }
 
 
+/**
+ * @brief 更新局部关键帧
+ */
 void Tracking::UpdateLocalKeyFrames()
 {
-    // Each map point vote for the keyframes in which it has been observed
     map<KeyFrame*,int> keyframeCounter;
+    //遍历当前帧的地图点，记录所有能观测到这些地图点的关键帧（共视帧）
     for(int i=0; i<mCurrentFrame.N; i++)
     {
         if(mCurrentFrame.mvpMapPoints[i])
@@ -1272,7 +1291,9 @@ void Tracking::UpdateLocalKeyFrames()
             MapPoint* pMP = mCurrentFrame.mvpMapPoints[i];
             if(!pMP->isBad())
             {
+                //获取能观测到此点的关键帧及其索引
                 const map<KeyFrame*,size_t> observations = pMP->GetObservations();
+                //记录当前帧的共视程度
                 for(map<KeyFrame*,size_t>::const_iterator it=observations.begin(), itend=observations.end(); it!=itend; it++)
                     keyframeCounter[it->first]++;
             }
@@ -1282,51 +1303,54 @@ void Tracking::UpdateLocalKeyFrames()
             }
         }
     }
-
+    //没有共视帧
     if(keyframeCounter.empty())
         return;
 
     int max=0;
-    KeyFrame* pKFmax= static_cast<KeyFrame*>(NULL);
+    KeyFrame* pKFmax= static_cast<KeyFrame*>(NULL);//储存具有最高共视程度的关键帧
 
     mvpLocalKeyFrames.clear();
     mvpLocalKeyFrames.reserve(3*keyframeCounter.size());
 
-    // All keyframes that observe a map point are included in the local map. Also check which keyframe shares most points
+    //遍历共视关键帧
     for(map<KeyFrame*,int>::const_iterator it=keyframeCounter.begin(), itEnd=keyframeCounter.end(); it!=itEnd; it++)
     {
         KeyFrame* pKF = it->first;
 
         if(pKF->isBad())
             continue;
-
+        //找到具有最高共视程度的关键帧
         if(it->second>max)
         {
             max=it->second;
             pKFmax=pKF;
         }
-
+        //将该关键帧加入到局部关键帧中（这里加入的作为一级共视关键帧）
         mvpLocalKeyFrames.push_back(it->first);
-        pKF->mnTrackReferenceForFrame = mCurrentFrame.mnId;
+        pKF->mnTrackReferenceForFrame = mCurrentFrame.mnId;//记录该关键帧的id
     }
 
-
-    // Include also some not-already-included keyframes that are neighbors to already-included keyframes
+    //遍历一级共视关键帧，找到二级共视关键帧
     for(vector<KeyFrame*>::const_iterator itKF=mvpLocalKeyFrames.begin(), itEndKF=mvpLocalKeyFrames.end(); itKF!=itEndKF; itKF++)
     {
-        // Limit the number of keyframes
+        //如果一级共视关键帧>80，就不找二级了
         if(mvpLocalKeyFrames.size()>80)
             break;
 
         KeyFrame* pKF = *itKF;
 
+        //找到与当前一级共视关键帧有共视关系的前10个关键帧，作为二级共视关键帧
+        //这里vNeighs储存的二级共视关键帧按共视程度从大到小排列
         const vector<KeyFrame*> vNeighs = pKF->GetBestCovisibilityKeyFrames(10);
 
+        //遍历二级共视关键帧
         for(vector<KeyFrame*>::const_iterator itNeighKF=vNeighs.begin(), itEndNeighKF=vNeighs.end(); itNeighKF!=itEndNeighKF; itNeighKF++)
         {
             KeyFrame* pNeighKF = *itNeighKF;
             if(!pNeighKF->isBad())
-            {
+            {   
+                //将二级共视关键帧加入到局部关键帧中
                 if(pNeighKF->mnTrackReferenceForFrame!=mCurrentFrame.mnId)
                 {
                     mvpLocalKeyFrames.push_back(pNeighKF);
@@ -1336,6 +1360,7 @@ void Tracking::UpdateLocalKeyFrames()
             }
         }
 
+        //获取一级共视关键帧的子关键帧，将其加入到局部关键帧中
         const set<KeyFrame*> spChilds = pKF->GetChilds();
         for(set<KeyFrame*>::const_iterator sit=spChilds.begin(), send=spChilds.end(); sit!=send; sit++)
         {
@@ -1351,6 +1376,7 @@ void Tracking::UpdateLocalKeyFrames()
             }
         }
 
+        //获取一级共视关键帧的父关键帧，将其加入到局部关键帧中
         KeyFrame* pParent = pKF->GetParent();
         if(pParent)
         {
@@ -1364,6 +1390,7 @@ void Tracking::UpdateLocalKeyFrames()
 
     }
 
+    //将具有最高共视程度的关键帧作为当前帧的参考关键帧
     if(pKFmax)
     {
         mpReferenceKF = pKFmax;

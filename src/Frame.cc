@@ -266,6 +266,12 @@ void Frame::UpdatePoseMatrices()
     mOw = -mRcw.t()*mtcw;
 }
 
+/**
+ * @brief 判断地图点是否在当前帧的视野范围内
+ * @param pMP 地图点
+ * @param viewingCosLimit 视野范围（相机光心指向地图点的向量 与 平均观测方向 的余弦值）
+ * @return true-在 false-不在
+ */
 bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
 {
     pMP->mbTrackInView = false;
@@ -279,11 +285,11 @@ bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
     const float &PcY= Pc.at<float>(1);
     const float &PcZ = Pc.at<float>(2);
 
-    // Check positive depth
+    //1.要求该地图点在当前帧的坐标系下的深度为正
     if(PcZ<0.0f)
         return false;
 
-    // Project in image and check it is not outside
+    //2.将该地图点投影至当前帧中,要求投影点在有效范围内
     const float invz = 1.0f/PcZ;
     const float u=fx*PcX*invz+cx;
     const float v=fy*PcY*invz+cy;
@@ -293,7 +299,7 @@ bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
     if(v<mnMinY || v>mnMaxY)
         return false;
 
-    // Check distance is in the scale invariance region of the MapPoint
+    //3.计算地图点到光心的距离，要求距离在有效范围内
     const float maxDistance = pMP->GetMaxDistanceInvariance();
     const float minDistance = pMP->GetMinDistanceInvariance();
     const cv::Mat PO = P-mOw;
@@ -302,7 +308,7 @@ bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)
     if(dist<minDistance || dist>maxDistance)
         return false;
 
-   // Check viewing angle
+   //4.要求在观测视角范围内
     cv::Mat Pn = pMP->GetNormal();
 
     const float viewCos = PO.dot(Pn)/dist;
